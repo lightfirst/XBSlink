@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading;
+using System.IO;                                 // ← 新增（Path.Combine）
 using SharpPcap;
 using SharpPcap.LibPcap;
 using SharpPcap.WinPcap;
@@ -51,6 +52,10 @@ namespace XBSlink
         String option_capture_device = null;
         OptionSet command_line_option_set;
         bool option_check_for_update = false;
+
+        // ---- 内置 EasyTier ----
+        bool option_enable_easytier = true;          // 默认启用（文件存在时）
+        String option_easytier_ini = null;
 
         [System.Runtime.InteropServices.DllImport("kernel32.dll")]
         private static extern bool AllocConsole();
@@ -106,6 +111,9 @@ namespace XBSlink
                 { "p|port=", "set the incoming port number. default is 31415", (UInt16 v) => option_local_port = v },
                 { "o|source-ip=", "bind to this local ip address.", (String v) => option_local_ip=IPAddress.Parse(v) },
                 { "i|capture-device=", "name of network device for capturing packets", v => option_capture_device = v },
+                // ---- EasyTier ----
+                { "e|easytier", "enable built-in EasyTier (easytier.ini in app folder)", v => option_enable_easytier = v != null },
+                { "E|easytier-ini=", "path to easytier.ini", v => option_easytier_ini = v },
             };
 
             xbs_settings = settings;
@@ -115,8 +123,16 @@ namespace XBSlink
             close_app(exit_code);
         }
 
-        private void close_app( int exit_code )
+        private void close_app(int exit_code)
         {
+            // ---- EasyTier 先关 ----
+            try { xbs_easytier.Shutdown(); }
+            catch (Exception ex)
+            {
+                xbs_messages.addInfoMessage("!! [ET] shutdown failed: " + ex.Message,
+                    xbs_message_sender.GENERAL, xbs_message_type.WARNING);
+            }
+
             if (cloudlist != null)
                 if (cloudlist.part_of_cloud)
                     cloudlist.LeaveCloud();
@@ -154,6 +170,8 @@ namespace XBSlink
 
         private int parse_command_line(String[] args)
         {
+            // ---- EasyTier 在进入引擎前拉起（仅让虚拟网络就绪，不改 option_local_ip）----
+            start_easytier();
             try
             {
                 command_line_option_set.Parse(args);
@@ -161,29 +179,29 @@ namespace XBSlink
             catch (OptionException e)
             {
                 command_line_parser_error(command_line_option_set, e);
-                return(-3);
+                return (-3);
             }
             catch (System.FormatException e)
             {
                 command_line_parser_error(command_line_option_set, e);
-                return(-4);
+                return (-4);
             }
             if (!cmd_help && !cmd_list_devices && !cmd_list_clouds)
             {
                 if (option_capture_device == null)
                 {
                     command_line_parser_error(command_line_option_set, new OptionException("you need to specify a capture device", "capture-device"));
-                    return(-5);
+                    return (-5);
                 }
                 else if (option_local_ip == null)
                 {
                     command_line_parser_error(command_line_option_set, new OptionException("you need to specify a local ip addres to bind to", "local source ip address"));
-                    return(-5);
+                    return (-5);
                 }
                 else if (option_nickname == null)
                 {
                     command_line_parser_error(command_line_option_set, new OptionException("you need to specify a nickname", "XBSlink nickname"));
-                    return(-5);
+                    return (-5);
                 }
             }
 
@@ -205,6 +223,36 @@ namespace XBSlink
                 start_engine();
             }
             return 0;
+        }
+
+        /// <summary>
+        /// 启动内置 EasyTier（若 easytier.ini 存在）。
+        /// 只把虚拟网络跑起来、VIP 写进 xbs_easytier 静态字段；
+        /// 是否绑定 VIP 由用户在 -o 里自己指定。
+        /// </summary>
+        private void start_easytier()
+        {
+            if (!option_enable_easytier)
+                return;
+
+            string ini = option_easytier_ini
+                ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "easytier.ini");
+            if (!File.Exists(ini))
+                return;
+
+            string err;
+            if (xbs_easytier.StartupFromIni(ini, option_nickname, out err))
+            {
+                xbs_messages.addInfoMessage(
+                    " @ [ET] virtual network up, VIP = " + xbs_easytier.Vip
+                    + " (use -o " + xbs_easytier.Vip + " if you want to bind EasyTier)",
+                    xbs_message_sender.GENERAL);
+            }
+            else
+            {
+                xbs_messages.addInfoMessage("!! [ET] startup failed: " + err,
+                    xbs_message_sender.GENERAL, xbs_message_type.ERROR);
+            }
         }
 
         private void start_engine()
@@ -248,10 +296,10 @@ namespace XBSlink
                 xbs_messages.addInfoMessage("!! UPnP port mapping failed", xbs_message_sender.GENERAL, xbs_message_type.ERROR);
             }
             if (external_ip == null)
-                external_ip = xbs_upnp.getExternalIPAddressFromWebsite();                        
+                external_ip = xbs_upnp.getExternalIPAddressFromWebsite();
             IPAddress local_node_ip = (external_ip == null) ? option_local_ip : external_ip;
             node_list.local_node = new xbs_node(local_node_ip, udp_listener.udp_socket_port);
-            if (option_nickname!=null)
+            if (option_nickname != null)
                 node_list.local_node.nickname = option_nickname;
 
             sniffer = new xbs_sniffer(pdev, false, null, false, node_list, NAT, local_gateways, true);
@@ -339,31 +387,31 @@ namespace XBSlink
 
         private void list_Devices(String[] args)
         {
-			WriteLine("List of available devices:");
+            WriteLine("List of available devices:");
             if (System.Environment.OSVersion.Platform == PlatformID.Win32NT)
                 foreach (LibPcapLiveDevice dev in capture_devices_win)
                     WriteLine("  " + dev.Name + " (" + dev.Description + ")");
             else
                 foreach (LibPcapLiveDevice dev in capture_devices)
-                    WriteLine("  " + dev.Name + " (" + dev.Description+ ")");
+                    WriteLine("  " + dev.Name + " (" + dev.Description + ")");
         }
 
         private void output_version_info()
         {
-            Console.WriteLine( Environment.NewLine+"XBSlink Version " + xbs_settings.xbslink_version);
+            Console.WriteLine(Environment.NewLine + "XBSlink Version " + xbs_settings.xbslink_version);
         }
 
         private void ShowHelp()
         {
-            Console.WriteLine("Usage: XBSlink.exe [-h] [-l] [-s CLOUDSERVER] [-c CLOUDNAME] [-u] [-p PORT] -n NICKNAME -o IP -i CAPTURE_DEVICE_NAME");
+            Console.WriteLine("Usage: XBSlink.exe [-h] [-l] [-s CLOUDSERVER] [-c CLOUDNAME] [-u] [-p PORT] [-e] [-E INI] -n NICKNAME -o IP -i CAPTURE_DEVICE_NAME");
             command_line_option_set.WriteOptionDescriptions(Console.Out);
         }
 
         private void show_cloudlist()
         {
-            bool ret = cloudlist.loadCloudlistFromURL( xbs_cloudlist.DEFAULT_CLOUDLIST_SERVER );
+            bool ret = cloudlist.loadCloudlistFromURL(xbs_cloudlist.DEFAULT_CLOUDLIST_SERVER);
             xbs_cloud[] clouds = cloudlist.getCloudlistArray();
-            int count=0;
+            int count = 0;
             WriteLine("Available clouds on cloudlist server:");
             foreach (xbs_cloud cloud in clouds)
             {
@@ -387,11 +435,11 @@ namespace XBSlink
             try
             {
 #endif
-            while (!exiting)
-            {
-                output_queued_messages();
-                Thread.Sleep(300);
-            }
+                while (!exiting)
+                {
+                    output_queued_messages();
+                    Thread.Sleep(300);
+                }
 #if !DEBUG
             }
             catch (Exception ex)
@@ -423,7 +471,7 @@ namespace XBSlink
         private void stop_threads()
         {
             exiting = true;
-            if (MessageThread!=null)
+            if (MessageThread != null)
                 if (MessageThread.ThreadState != ThreadState.Stopped)
                     MessageThread.Join();
         }
@@ -433,8 +481,8 @@ namespace XBSlink
             try
             {
                 capture_devices = LibPcapLiveDeviceList.Instance;
-                    if (System.Environment.OSVersion.Platform == PlatformID.Win32NT)
-                        capture_devices_win = WinPcapDeviceList.Instance;
+                if (System.Environment.OSVersion.Platform == PlatformID.Win32NT)
+                    capture_devices_win = WinPcapDeviceList.Instance;
             }
             catch (Exception)
             {
@@ -510,7 +558,7 @@ namespace XBSlink
         private void showConnectedNodes()
         {
             List<xbs_node> nodes = node_list.getXBSNodeListCopy();
-            WriteLine("Connected nodes: "+nodes.Count);
+            WriteLine("Connected nodes: " + nodes.Count);
             int count = 0;
             String str;
             foreach (xbs_node node in nodes)
@@ -567,7 +615,7 @@ namespace XBSlink
                 ip_properties = ni.GetIPProperties();
                 foreach (UnicastIPAddressInformation uniCast in ip_properties.UnicastAddresses)
                 {
-                    if (uniCast.Address.AddressFamily==AddressFamily.InterNetwork && uniCast.Address.Equals(ip))
+                    if (uniCast.Address.AddressFamily == AddressFamily.InterNetwork && uniCast.Address.Equals(ip))
                     {
                         return ip_properties.GatewayAddresses;
                     }

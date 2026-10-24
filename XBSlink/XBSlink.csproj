@@ -32,6 +32,7 @@
     <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
     <UseApplicationTrust>false</UseApplicationTrust>
     <BootstrapperEnabled>true</BootstrapperEnabled>
+	<ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
     <PlatformTarget>x86</PlatformTarget>
@@ -106,6 +107,7 @@
     <Compile Include="Settings.cs" />
     <Compile Include="xbs_cloudlist.cs" />
     <Compile Include="xbs_chat.cs" />
+    <Compile Include="xbs_easytier.cs" />
     <Compile Include="xbs_messages.cs" />
     <Compile Include="xbs_nat.cs" />
     <Compile Include="xbs_natstun.cs" />

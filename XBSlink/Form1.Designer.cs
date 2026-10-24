@@ -187,6 +187,7 @@ namespace XBSlink
             this.contextMenuStrip_systray = new System.Windows.Forms.ContextMenuStrip(this.components);
             this.toolStripMenuItem_exit = new System.Windows.Forms.ToolStripMenuItem();
             this.button_language = new System.Windows.Forms.Button();
+            this.button1 = new System.Windows.Forms.Button();
             this.statusStrip.SuspendLayout();
             this.tabControl1.SuspendLayout();
             this.tabPage_newsFeed.SuspendLayout();
@@ -1253,6 +1254,7 @@ namespace XBSlink
             // 
             this.groupBox_portoptions.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
+            this.groupBox_portoptions.Controls.Add(this.button1);
             this.groupBox_portoptions.Controls.Add(this.checkbox_UPnP);
             this.groupBox_portoptions.Controls.Add(this.checkBox_useCloudServerForPortCheck);
             this.groupBox_portoptions.Controls.Add(this.label3);
@@ -1730,6 +1732,16 @@ namespace XBSlink
             this.button_language.UseVisualStyleBackColor = true;
             this.button_language.Click += new System.EventHandler(this.button1_Click);
             // 
+            // button1
+            // 
+            this.button1.Enabled = false;
+            this.button1.Location = new System.Drawing.Point(267, 32);
+            this.button1.Name = "button1";
+            this.button1.Size = new System.Drawing.Size(39, 19);
+            this.button1.TabIndex = 38;
+            this.button1.Text = "Add";
+            this.button1.UseVisualStyleBackColor = true;
+            // 
             // FormMain
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
@@ -1943,6 +1955,7 @@ namespace XBSlink
         private System.Windows.Forms.TextBox textBox_public_port;
         private System.Windows.Forms.Label label21;
         private System.Windows.Forms.Button button_language;
+        private System.Windows.Forms.Button button1;
     }
 }
 

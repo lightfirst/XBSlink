@@ -43,6 +43,7 @@ using System.ServiceModel.Syndication;
 using System.Xml;
 using System.Linq;
 using System.Xml.Linq;
+using System.IO;
 
 
 [assembly: RegistryPermissionAttribute(SecurityAction.RequestMinimum,
@@ -216,6 +217,60 @@ namespace XBSlink
             listView_clouds.Columns[0].Width = width-listView_clouds.Columns.Count-1;
         }
 
+        private void LoadNetworkDependentData()
+        {
+            // 云端列表
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    bool ret = cloudlist.loadCloudlistFromURL(textBox_cloudlist.Text);
+                    if (ret)
+                    {
+                        xbs_cloud[] clouds = cloudlist.getCloudlistArray();
+                        this.BeginInvoke(new Action(() =>
+                        {
+                            if (clouds.Length > 0)
+                            {
+                                initCloudListView();
+                                foreach (xbs_cloud cloud in clouds)
+                                {
+                                    ListViewItem lv_item = new ListViewItem(cloud.name);
+                                    lv_item.SubItems.Add(cloud.node_count.ToString());
+                                    lv_item.SubItems.Add(cloud.max_nodes.ToString());
+                                    if (cloud.isPrivate) lv_item.ImageIndex = 0;
+                                    listView_clouds.Items.Add(lv_item);
+                                }
+                            }
+                        }));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    xbs_messages.addInfoMessage("!! auto load cloud list failed: " + ex.Message,
+                        xbs_message_sender.CLOUDLIST, xbs_message_type.WARNING);
+                }
+            });
+
+            // 新闻源
+            if (checkBox_showNewsFeed.Checked)
+            {
+                string uri = textBox_newsFeedUri.Text;
+                System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                {
+                    try
+                    {
+                        this.BeginInvoke(new Action(() => loadNewsFeed(uri)));
+                    }
+                    catch (Exception ex)
+                    {
+                        xbs_messages.addInfoMessage("!! load news feed failed: " + ex.Message,
+                            xbs_message_sender.GENERAL, xbs_message_type.WARNING);
+                    }
+                });
+            }
+        }
+
         private void Form1_Load(object sender, EventArgs e)
         {
             WebRequest.DefaultWebProxy = null;
@@ -237,6 +292,63 @@ namespace XBSlink
             initializeLocalIPList();
             initializeTrayIcon();
             initWithRegistryValues();
+
+
+            // 改为：后台线程启动 EasyTier，GUI 不被阻塞
+            string etIni = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "easytier.ini");
+            if (File.Exists(etIni))
+            {
+                string nickname = textBox_chatNickname.Text;
+                if (string.IsNullOrEmpty(nickname))
+                    nickname = xbs_chat.STANDARD_NICKNAME;
+
+                System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                {
+                    string etErr;
+                    bool ok = xbs_easytier.StartupFromIni(etIni, nickname, out etErr);
+
+                    this.BeginInvoke(new Action(() =>
+                    {
+                        if (ok)
+                        {
+                            string vip = xbs_easytier.Vip;
+                            int idx = comboBox_localIP.Items.IndexOf(vip);
+                            if (idx < 0)
+                            {
+                                comboBox_localIP.Items.Add(vip);
+                                idx = comboBox_localIP.Items.Count - 1;
+                                IPAddress vip_addr = IPAddress.Parse(vip);
+                                if (!network_device_gateways.ContainsKey(vip_addr))
+                                    network_device_gateways[vip_addr] = null;
+                            }
+                            comboBox_localIP.SelectedIndex = idx;
+                            internal_ip = IPAddress.Parse(vip);
+
+                            xbs_messages.addInfoMessage(
+                                " @ [ET] virtual network up, VIP = " + vip
+                                + " (auto-selected in 'Bind IP')",
+                                xbs_message_sender.GENERAL);
+
+                            // ★ EasyTier 网络就绪后，再加载新闻和云端列表
+                            LoadNetworkDependentData();
+                            //loadNewsFeed(textBox_newsFeedUri.Text);
+                        }
+                        else
+                        {
+                            xbs_messages.addInfoMessage("!! [ET] startup failed: " + etErr,
+                                xbs_message_sender.GENERAL, xbs_message_type.ERROR);
+
+                            // EasyTier 失败也允许用户继续用物理网卡，仍然加载新闻/云端列表
+                            //LoadNetworkDependentData();
+                        }
+                    }));
+                });
+            }
+            else
+            {
+                // 没有 easytier.ini：保持原有行为，直接加载
+                //LoadNetworkDependentData();
+            }
 
             // 只有在配置文件里没有有效设备名时，才自动选择网卡
             if (!captureDeviceRestoredFromSettings)
@@ -298,20 +410,6 @@ namespace XBSlink
             tabControl1.SelectedTab = tabPage_settings;
             autoswitch_on_chat_message = checkBox_chatAutoSwitch.Checked;
 
-            if (checkBox_showNewsFeed.Checked)
-                loadNewsFeed(textBox_newsFeedUri.Text);
-
-            // 自动选择 10.165 开头的虚拟网卡 IP（如果有）
-            for (int i = 0; i < comboBox_localIP.Items.Count; i++)
-            {
-                string ipStr = comboBox_localIP.Items[i].ToString();
-                if (ipStr.StartsWith("10.165."))
-                {
-                    comboBox_localIP.SelectedIndex = i;
-                    break;
-                }
-            }
-
             // 取消勾选 UPnP
             checkbox_UPnP.Checked = false;
             use_UPnP = false;
@@ -324,16 +422,7 @@ namespace XBSlink
 
             button_language.Enabled = true;
 
-            // 启动后自动加载房间列表
-            try
-            {
-                buttonLoadCloudlist_Click(null, null);
-            }
-            catch (Exception ex)
-            {
-                xbs_messages.addInfoMessage("!! auto load cloud list failed: " + ex.Message,
-                    xbs_message_sender.CLOUDLIST, xbs_message_type.WARNING);
-            }
+            //LoadNetworkDependentData();
         }
 
         private void UpdateStartEngineButtonText()
@@ -651,9 +740,20 @@ namespace XBSlink
             IPAddress local_node_ip = (external_ip == null) ? internal_ip : external_ip;
             node_list.local_node = new xbs_node(local_node_ip, udp_listener.udp_socket_port);
             node_list.local_node.nickname = textBox_chatNickname.Text;
+            GatewayIPAddressInformationCollection gateways_for_bind_ip = null;
+            if (network_device_gateways.ContainsKey(internal_ip))
+                gateways_for_bind_ip = network_device_gateways[internal_ip];
+
             try
             {
-                sniffer = new xbs_sniffer((LibPcapLiveDevice)pdev, checkBox_enable_MAC_list.Checked, generateSnifferMacList(), checkBox_mac_restriction.Checked, node_list, NAT, network_device_gateways[internal_ip], checkBox_excludeGatewayIPs.Checked);
+                sniffer = new xbs_sniffer((LibPcapLiveDevice)pdev,
+                    checkBox_enable_MAC_list.Checked,
+                    generateSnifferMacList(),
+                    checkBox_mac_restriction.Checked,
+                    node_list,
+                    NAT,
+                    gateways_for_bind_ip,
+                    checkBox_excludeGatewayIPs.Checked);
                 sniffer.start_capture();
             }
             catch (ArgumentException aex)
@@ -714,6 +814,7 @@ namespace XBSlink
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
             engine_stop();
+            xbs_easytier.Shutdown();
             if (notify_icon != null)
                 if (notify_icon.Visible)
                     notify_icon.Visible = false;
@@ -738,7 +839,7 @@ namespace XBSlink
         private void engine_stop()
         {
             button_announce.Enabled = false;
-            if (cloudlist!=null)
+            if (cloudlist != null)
                 if (cloudlist.part_of_cloud)
                     cloudlist.LeaveCloud();
             timer1.Stop();
@@ -1963,11 +2064,10 @@ namespace XBSlink
                 xbs_system_functions.restoreSystemSleepState();
         }
 
-        private void loadNewsFeed( String url )
+        private void loadNewsFeed(String url)
         {
             try
             {
-
                 richTextBox_newsFeed.Clear();
 
                 string result = null;
@@ -1994,6 +2094,13 @@ namespace XBSlink
                 richTextBox_newsFeed.SelectionStart = 0;
                 richTextBox_newsFeed.ScrollToCaret();
 
+                // ★ 成功加载且有内容时，切换到新闻页
+                if (first_id != null && richTextBox_newsFeed.TextLength > 0)
+                {
+                    if (tabControl1.TabPages.Contains(tabPage_newsFeed))
+                        tabControl1.SelectedTab = tabPage_newsFeed;
+                }
+
                 if ((first_id != xbs_settings.settings.REG_NEWS_FEED_NEWEST_ID) && checkBox_switchToNewsTab.Checked)
                 {
                     tabControl1.SelectedTab = tabPage_newsFeed;
@@ -2003,7 +2110,7 @@ namespace XBSlink
             }
             catch (Exception ex)
             {
-                xbs_messages.addInfoMessage("!!ERROR!! could not initialize news feed: "+ex.Message, xbs_message_sender.GENERAL, xbs_message_type.ERROR);
+                xbs_messages.addInfoMessage("!!ERROR!! could not initialize news feed: " + ex.Message, xbs_message_sender.GENERAL, xbs_message_type.ERROR);
             }
         }
 

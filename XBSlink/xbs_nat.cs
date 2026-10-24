@@ -369,6 +369,7 @@ namespace XBSlink
             IPv4Packet p_IPV4 = null;
             ARPPacket p_ARP = null;
             bool packet_changed = false;
+
             if (ethernet_packet_type == EthernetPacketType.IpV4)
                 p_IPV4 = (IPv4Packet)p.PayloadPacket;
             else if (ethernet_packet_type == EthernetPacketType.Arp)
@@ -407,30 +408,46 @@ namespace XBSlink
             {
                 if (p_IPV4 != null)
                 {
-                    p_IPV4.DestinationAddress = nat_entry.original_source_ip;
-                    p_IPV4.UpdateIPChecksum();
-                    if (p_IPV4.Protocol == IPProtocolType.UDP)
+                    // ★ 增加判空：确保 original_source_ip 不是 null
+                    if (nat_entry.original_source_ip != null && p_IPV4.DestinationAddress != null)
                     {
-                        UdpPacket p_UDP = (UdpPacket)p_IPV4.PayloadPacket;
-                        if (NAT_enablePS3mode)
+                        p_IPV4.DestinationAddress = nat_entry.original_source_ip;
+                        p_IPV4.UpdateIPChecksum();
+
+                        if (p_IPV4.Protocol == IPProtocolType.UDP)
                         {
-                            bool ret = PS3_replaceClientAnswer_hostAddr(dstMAC, ref p_UDP, nat_entry.original_source_ip, nat_entry.natted_source_ip);
+                            UdpPacket p_UDP = (UdpPacket)p_IPV4.PayloadPacket;
+                            if (NAT_enablePS3mode && p_UDP != null && nat_entry.original_source_ip != null && nat_entry.natted_source_ip != null)
+                            {
+                                bool ret = PS3_replaceClientAnswer_hostAddr(dstMAC, ref p_UDP, nat_entry.original_source_ip, nat_entry.natted_source_ip);
+                            }
+                            if (p_UDP != null) p_UDP.UpdateUDPChecksum();
+                            packet_changed = true;
                         }
-                        p_UDP.UpdateUDPChecksum();
-                        packet_changed = true;
+                        else if (p_IPV4.Protocol == IPProtocolType.TCP && p_IPV4.PayloadPacket is TcpPacket)
+                        {
+                            ((TcpPacket)p_IPV4.PayloadPacket).UpdateTCPChecksum();
+                            packet_changed = true;
+                        }
                     }
-                    else if (p_IPV4.Protocol == IPProtocolType.TCP)
+                    else
                     {
-                        ((TcpPacket)p_IPV4.PayloadPacket).UpdateTCPChecksum();
-                        packet_changed = true;
+#if DEBUG
+                        xbs_messages.addDebugMessage("!! NAT skipped: null IP address in outgoing packet", xbs_message_sender.NAT, xbs_message_type.WARNING);
+#endif
                     }
                 }
                 else if (p_ARP != null)
                 {
-                    p_ARP.TargetProtocolAddress = nat_entry.original_source_ip;
-                    packet_changed = true;
+                    // ★ 增加判空
+                    if (nat_entry.original_source_ip != null && p_ARP.TargetProtocolAddress != null)
+                    {
+                        p_ARP.TargetProtocolAddress = nat_entry.original_source_ip;
+                        packet_changed = true;
+                    }
                 }
             }
+
             if (packet_changed)
                 data = p.BytesHighPerformance.ActualBytes();
 
