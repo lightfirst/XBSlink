@@ -43,7 +43,7 @@ namespace XBSlink
         public static bool isPortReachable = false;
 
         // External IP Service
-        private const String EXTERNAL_IP_WEB_SERVICE = "http://automation.whatismyip.com/n09230945.asp";
+        private const String EXTERNAL_IP_WEB_SERVICE = "https://whatismyip.net/ip/";
 
 #if DEBUG
         class UPnPlogger : StringWriter

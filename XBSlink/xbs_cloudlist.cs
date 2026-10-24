@@ -82,7 +82,7 @@ namespace XBSlink
 
     class xbs_cloudlist
     {
-        public const String DEFAULT_CLOUDLIST_SERVER = "http://www.secudb.de/~seuffert/xbslink/cloudlist/";
+        public const String DEFAULT_CLOUDLIST_SERVER = "http://10.165.0.105/cloudlist.php";
         public const int MIN_CLOUDNAME_LENGTH = 3;
         public const int UPDATE_INTERVAL_SECONDS = 29;
 
@@ -211,8 +211,13 @@ namespace XBSlink
             }
             if (!result.StartsWith(xbs_cloudlist_returncode.RETURN_CODE_OK))
             {
-                MessageBox.Show("could not join cloud "+cloudname+Environment.NewLine+"Error: \""+result+"\""+
-                                    Environment.NewLine+Environment.NewLine + "remember, only XBSlink nodes with an open port can create clouds", "XBSlink error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(
+                    "could not join cloud " + cloudname + Environment.NewLine +
+                    "Error: \"" + result + "\"" + Environment.NewLine + Environment.NewLine +
+                    "IP: " + node_ip.ToString() + Environment.NewLine +
+                    "Port: " + node_port.ToString() + Environment.NewLine + Environment.NewLine +
+                    "remember, only XBSlink nodes with an open port can create clouds",
+                    "XBSlink error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return false;
             }
 #if DEBUG

@@ -102,6 +102,8 @@ namespace XBSlink
 
         private TabPage tab_newsfeed = null;
 
+        private bool captureDeviceRestoredFromSettings = false;
+
         public FormMain()
         {
 #if DEBUG
@@ -124,6 +126,88 @@ namespace XBSlink
             app_start_time = DateTime.Now;
         }
 
+        private static readonly Dictionary<string, string[]> ui_texts = new Dictionary<string, string[]>
+        {
+            { "tabPage_info",              new[] { "信息", "Info" } },
+            { "tabPage_clouds",            new[] { "云列表", "Clouds" } },
+            { "tabPage_chat",              new[] { "聊天", "Chat" } },
+            { "tabPage_messages",          new[] { "消息", "Messages" } },
+            { "tabPage_settings",          new[] { "设置", "Settings" } },
+            { "tabPage_about",             new[] { "关于", "About" } },
+            { "tabPage_newsFeed",          new[] { "公告", "News" } },
+            { "button_announce",           new[] { "直连远程主机", "Connect to remote host" } },
+            { "label1",                    new[] { "远程主机：", "Remote Host:" } },
+            { "label2",                    new[] { "抓包设备（与游戏机同一网络）", "Capture Device (same network as console)" } },
+            { "label3",                    new[] { "绑定 IP", "Bind to IP" } },
+            { "label6",                    new[] { "监听端口", "Incoming port" } },
+            { "checkbox_UPnP",             new[] { "使用 UPnP NAT（自动端口转发）", "Use UPnP NAT (automatic port forwarding)" } },
+            { "checkBox_useCloudServerForPortCheck", new[] { "使用云服务器检查端口", "Use cloud server to check incoming port" } },
+            { "checkBox_filter_wellknown_ports",     new[] { "过滤知名端口（<1024）", "Filter well-known ports (<1024)" } },
+            { "checkBox_excludeGatewayIPs",          new[] { "排除网关 IP", "Exclude gateway IPs" } },
+            { "checkBox_forward_all_high_port_broadcast", new[] { "转发高位端口广播", "Forward high-port broadcasts" } },
+            { "checkBox_enable_MAC_list",            new[] { "启用特殊 MAC 列表", "Enable special MAC list" } },
+            { "checkBox_mac_restriction",            new[] { "只转发这些设备", "Only forward these devices" } },
+            { "button_add_MAC",            new[] { "添加", "Add" } },
+            { "button_del_MAC",            new[] { "删除", "Del" } },
+            { "button_save_settings",      new[] { "保存设置", "Save settings" } },
+            { "button_reset_settings",     new[] { "重置", "Reset" } },
+            { "buttonLoadCloudlist",       new[] { "加载", "Load" } },
+            { "label11",                   new[] { "云列表：", "Cloud list:" } },
+            { "button_CloudJoin",          new[] { "加入/创建", "Join/Create" } },
+            { "button_CloudLeave",         new[] { "离开", "Leave" } },
+            { "label12",                   new[] { "房间名称", "Cloud name" } },
+            { "label13",                   new[] { "最大", "Max" } },
+            { "label14",                   new[] { "密码", "Password" } },
+            { "label21",                   new[] { "映射地址", "MappedAddress" } },
+            { "label_nickname",            new[] { "昵称", "Nickname" } },
+            { "label7",                    new[] { "公告 URI", "News feed URI" } },
+            { "checkBox_showNewsFeed",     new[] { "显示公告标签页", "Show news feed tab" } },
+            { "checkBox_switchToNewsTab",  new[] { "有新公告时切换到公告页", "Switch to news tab on new news" } },
+            { "checkBox_chatAutoSwitch",   new[] { "收到消息时自动切到聊天页", "Auto switch to chat tab" } },
+            { "checkBox_chat_nodeInfoMessagesInChat", new[] { "聊天中显示加入/离开信息", "Show join/leave info in chat" } },
+            { "checkBox_chat_notify",      new[] { "新消息声音提示", "Play sound on new message" } },
+            { "checkBox_newNodeSound",     new[] { "节点加入/离开声音提示", "Play sound when node joins or leaves" } },
+            { "checkBox_checkForUpdates",  new[] { "检查更新", "Check for updates" } },
+            { "checkBox_minimize2systray", new[] { "最小化到托盘", "Minimize to systray" } },
+            { "checkBox_preventSystemStandby", new[] { "防止系统待机", "Prevent system standby" } },
+            { "button_clearMessages",      new[] { "清除消息", "Clear messages" } },
+            { "button_messages_copy",      new[] { "复制到剪贴板", "Copy to clipboard" } },
+            { "button_clearChat",          new[] { "清除", "Clear" } },
+            { "label16",                   new[] { "在线：", "Online:" } },
+            { "tabPageSettings_general",   new[] { "常规", "General" } },
+            { "tabPageSettings_network",   new[] { "网络", "Network" } },
+            { "groupBox_usersettings",     new[] { "用户", "User" } },
+            { "groupBox_chatsettings",     new[] { "聊天设置", "Chat settings" } },
+            { "groupBox5",                 new[] { "声音", "Sound" } },
+            { "groupBox_updates",          new[] { "系统", "System" } },
+            { "groupBox_newsFeed",         new[] { "公告", "News feed" } },
+            { "groupBox1",                 new[] { "抓包", "Packet sniffer" } },
+            { "groupBox_portoptions",      new[] { "网络连接", "Internet connection" } },
+            { "groupBox_packetfilter",     new[] { "包过滤", "Packet filter" } },
+            { "groupBox_MAClist",          new[] { "“始终转发” MAC 列表", "\"Always forward\" MAC list" } },
+            { "groupBox3",                 new[] { "NAT 设置", "NAT settings" } },
+        };
+
+        private bool isEnglish = false;
+
+        private void ApplyLanguage(bool english)
+        {
+            isEnglish = english;
+            int idx = english ? 1 : 0;
+            foreach (var kv in ui_texts)
+            {
+                Control[] found = this.Controls.Find(kv.Key, true);
+                if (found.Length > 0)
+                    found[0].Text = kv.Value[idx];
+            }
+            // 语言按钮本身的文本：英文界面显示“中文”（点了切回中文），中文界面显示“English”
+            button_language.Text = english ? "中文" : "English";
+            UpdateStartEngineButtonText();
+            // 保存
+            xbs_settings.settings.REG_LANGUAGE = english ? "en" : "zh";
+            xbs_settings.settings.Save();
+        }
+
         private void initializeCloudListView()
         {
             int width = listView_clouds.Width-20;
@@ -134,7 +218,6 @@ namespace XBSlink
 
         private void Form1_Load(object sender, EventArgs e)
         {
-            // globally turn off Proxy auto detection
             WebRequest.DefaultWebProxy = null;
 
             node_list = new xbs_node_list();
@@ -154,6 +237,62 @@ namespace XBSlink
             initializeLocalIPList();
             initializeTrayIcon();
             initWithRegistryValues();
+
+            // 只有在配置文件里没有有效设备名时，才自动选择网卡
+            if (!captureDeviceRestoredFromSettings)
+            {
+                int bestIndex = -1;
+                int fallbackIndex = -1;
+
+                for (int i = 0; i < comboBox_captureDevice.Items.Count; i++)
+                {
+                    string itemText = comboBox_captureDevice.Items[i].ToString();
+
+                    if (itemText.IndexOf("VMware", StringComparison.OrdinalIgnoreCase) >= 0)
+                        continue;
+                    if (itemText.IndexOf("loopback", StringComparison.OrdinalIgnoreCase) >= 0)
+                        continue;
+                    if (itemText.IndexOf("KM-TEST", StringComparison.OrdinalIgnoreCase) >= 0)
+                        continue;
+                    if (itemText.IndexOf("TAP", StringComparison.OrdinalIgnoreCase) >= 0)
+                        continue;
+                    if (itemText.IndexOf("WeOnlyDo", StringComparison.OrdinalIgnoreCase) >= 0)
+                        continue;
+                    if (itemText.IndexOf("Default", StringComparison.OrdinalIgnoreCase) >= 0)
+                        continue;
+                    if (itemText.StartsWith("Radmin", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (itemText.IndexOf("WAN Miniport", StringComparison.OrdinalIgnoreCase) >= 0)
+                        continue;
+
+                    ICaptureDevice pdev = pcap_devices[i];
+                    NetworkInterface ni = getNetworkInterfaceForPDEV(pdev);
+                    if (ni != null)
+                    {
+                        if (ni.NetworkInterfaceType == NetworkInterfaceType.Ethernet &&
+                            ni.OperationalStatus == OperationalStatus.Up)
+                        {
+                            foreach (var kvp in network_device_gateways)
+                            {
+                                if (kvp.Value != null && kvp.Value.Count > 0 &&
+                                    !kvp.Value[0].Address.Equals(new IPAddress(0)))
+                                {
+                                    bestIndex = i;
+                                    break;
+                                }
+                            }
+                            if (bestIndex >= 0) break;
+                            if (fallbackIndex < 0) fallbackIndex = i;
+                        }
+                    }
+                }
+
+                if (bestIndex >= 0)
+                    comboBox_captureDevice.SelectedIndex = bestIndex;
+                else if (fallbackIndex >= 0)
+                    comboBox_captureDevice.SelectedIndex = fallbackIndex;
+            }
+
             initializeAboutWindow();
 
             tabControl1.SelectedTab = tabPage_settings;
@@ -161,8 +300,49 @@ namespace XBSlink
 
             if (checkBox_showNewsFeed.Checked)
                 loadNewsFeed(textBox_newsFeedUri.Text);
+
+            // 自动选择 10.165 开头的虚拟网卡 IP（如果有）
+            for (int i = 0; i < comboBox_localIP.Items.Count; i++)
+            {
+                string ipStr = comboBox_localIP.Items[i].ToString();
+                if (ipStr.StartsWith("10.165."))
+                {
+                    comboBox_localIP.SelectedIndex = i;
+                    break;
+                }
+            }
+
+            // 取消勾选 UPnP
+            checkbox_UPnP.Checked = false;
+            use_UPnP = false;
+
+            // 保存设置
+            saveRegistryValues();
+
+            bool english = (xbs_settings.settings.REG_LANGUAGE == "en");
+            ApplyLanguage(english);
+
+            button_language.Enabled = true;
+
+            // 启动后自动加载房间列表
+            try
+            {
+                buttonLoadCloudlist_Click(null, null);
+            }
+            catch (Exception ex)
+            {
+                xbs_messages.addInfoMessage("!! auto load cloud list failed: " + ex.Message,
+                    xbs_message_sender.CLOUDLIST, xbs_message_type.WARNING);
+            }
         }
 
+        private void UpdateStartEngineButtonText()
+        {
+            if (engine_started)
+                button_start_engine.Text = isEnglish ? "Stop Engine" : "停止引擎";
+            else
+                button_start_engine.Text = isEnglish ? "Start Engine" : "启动引擎";
+        }
         private void ShowVersionInfoMessages()
         {
             this.Text += " - Version " + xbs_settings.xbslink_version;
@@ -287,6 +467,9 @@ namespace XBSlink
             }
 
             comboBox_captureDevice.Text = s.REG_CAPTURE_DEVICE_NAME;
+            captureDeviceRestoredFromSettings = (comboBox_captureDevice.SelectedIndex >= 0
+                && comboBox_captureDevice.SelectedItem != null
+                && comboBox_captureDevice.SelectedItem.ToString() == s.REG_CAPTURE_DEVICE_NAME);
             comboBox_localIP.Text = s.REG_LOCAL_IP;
             textBox_local_Port.Text = s.REG_LOCAL_PORT.ToString();
             comboBox_RemoteHost.Text = s.REG_REMOTE_HOST;
@@ -327,7 +510,8 @@ namespace XBSlink
             int out_int;
 			if (comboBox_captureDevice.SelectedItem!=null)
             	s.REG_CAPTURE_DEVICE_NAME = comboBox_captureDevice.SelectedItem.ToString();
-            s.REG_LOCAL_IP = comboBox_localIP.SelectedItem.ToString();
+            if (comboBox_localIP.SelectedItem != null)
+                s.REG_LOCAL_IP = comboBox_localIP.SelectedItem.ToString();
             if (int.TryParse(textBox_local_Port.Text, out out_int)) 
                 s.REG_LOCAL_PORT = out_int;
             s.REG_REMOTE_HOST = comboBox_RemoteHost.Text;
@@ -462,7 +646,7 @@ namespace XBSlink
                 xbs_messages.addInfoMessage("!! UPnP port mapping failed", xbs_message_sender.GENERAL, xbs_message_type.ERROR);
             }
             if (external_ip==null)
-                external_ip = xbs_upnp.getExternalIPAddressFromWebsite();                        
+                external_ip = xbs_upnp.getExternalIPAddressFromWebsite();
 
             IPAddress local_node_ip = (external_ip == null) ? internal_ip : external_ip;
             node_list.local_node = new xbs_node(local_node_ip, udp_listener.udp_socket_port);
@@ -519,10 +703,12 @@ namespace XBSlink
             textBox_CloudMaxNodes.Enabled = true;
             button_CloudJoin.Enabled = true;
             button_CloudLeave.Enabled = false;
+            textBox_public_ip.Enabled = true;
+            textBox_public_port.Enabled = true;
 
             engine_started = true;
             button_start_engine.Enabled = true;
-            button_start_engine.Text = "Stop Engine";
+            UpdateStartEngineButtonText();
         }
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
@@ -582,7 +768,7 @@ namespace XBSlink
             NAT.ip_pool.freeAllIPs();
             updateNATIPPoolListView();
 
-            button_start_engine.Text = "Start Engine";
+            UpdateStartEngineButtonText();
             textBox_maininfo.Text = "Engine not started.";
             textBox_chatEntry.ReadOnly = true;
             textBox_chatEntry.Clear();
@@ -592,7 +778,9 @@ namespace XBSlink
             button_CloudJoin.Enabled = false;
             button_CloudLeave.Enabled = false;
             textBox_chatNickname.ReadOnly = false;
-            button_reset_settings.Enabled = true;            
+            button_reset_settings.Enabled = true;
+            textBox_public_ip.Enabled = true;
+            textBox_public_port.Enabled = true;
         }
 
         private IPAddress Resolver(string Hostname)
@@ -1321,7 +1509,40 @@ namespace XBSlink
 
         private void join_cloud()
         {
-            bool ret = cloudlist.JoinOrCreateCloud(textBox_cloudlist.Text, textBox_CloudName.Text, textBox_CloudMaxNodes.Text, textBox_CloudPassword.Text, node_list.local_node.ip_public, node_list.local_node.port_public, node_list.local_node.nickname, xbs_upnp.isPortReachable, xbs_settings.xbslink_version);
+            // 每次 join 前，重新读取手动填写的公网 IP / 端口
+            IPAddress join_ip = node_list.local_node.ip_public;
+            int join_port = node_list.local_node.port_public;
+
+            if (textBox_public_ip.Text.Trim().Length > 0)
+            {
+                IPAddress manual_ip;
+                if (IPAddress.TryParse(textBox_public_ip.Text.Trim(), out manual_ip))
+                    join_ip = manual_ip;
+                else
+                    xbs_messages.addInfoMessage("!! 手动填写的公网 IP 格式无效，已忽略", xbs_message_sender.GENERAL, xbs_message_type.WARNING);
+            }
+            if (textBox_public_port.Text.Trim().Length > 0)
+            {
+                int manual_port;
+                if (int.TryParse(textBox_public_port.Text.Trim(), out manual_port) && manual_port > 0 && manual_port <= 65535)
+                    join_port = manual_port;
+                else
+                    xbs_messages.addInfoMessage("!! 手动填写的公网端口无效，已忽略", xbs_message_sender.GENERAL, xbs_message_type.WARNING);
+            }
+
+            // 用本次读取到的地址覆盖 local_node，确保上报给服务器的是当前输入框的值
+            node_list.local_node = new xbs_node(join_ip, join_port);
+            node_list.local_node.nickname = textBox_chatNickname.Text;
+
+            bool ret = cloudlist.JoinOrCreateCloud(
+                textBox_cloudlist.Text, textBox_CloudName.Text, textBox_CloudMaxNodes.Text,
+                textBox_CloudPassword.Text,
+                node_list.local_node.ip_public,
+                node_list.local_node.port_public,
+                node_list.local_node.nickname,
+                xbs_upnp.isPortReachable,
+                xbs_settings.xbslink_version);
+
             if (ret)
             {
                 toolTip2.Show("joined " + textBox_CloudName.Text, button_CloudJoin, 0, -20, 2000);
@@ -1330,7 +1551,6 @@ namespace XBSlink
                 textBox_CloudName.Enabled = false;
                 textBox_CloudMaxNodes.Enabled = false;
                 textBox_CloudPassword.Enabled = false;
-
                 switch_tab = tabPage_info;
             }
         }
@@ -1755,7 +1975,8 @@ namespace XBSlink
                 client.Proxy = null;
                 try
                 {
-                    result = client.DownloadString(url);
+                    byte[] raw = client.DownloadData(url);
+                    result = System.Text.Encoding.UTF8.GetString(raw);
                 }
                 catch (WebException wex)
                 {
@@ -1786,11 +2007,11 @@ namespace XBSlink
             }
         }
 
-        private void addFeedEntry( String title, String summary, DateTimeOffset publish_date, String link_uri)
+        private void addFeedEntry(String title, String summary, DateTimeOffset publish_date, String link_uri)
         {
             FontFamily myFontFamily = new FontFamily("Arial");
-            Font font_head = new Font(myFontFamily, 14, FontStyle.Bold, GraphicsUnit.Pixel);
-            Font font_summary = new Font(myFontFamily, 10, FontStyle.Regular, GraphicsUnit.Pixel);
+            Font font_head = new Font(myFontFamily, 16, FontStyle.Bold, GraphicsUnit.Pixel);
+            Font font_summary = new Font(myFontFamily, 13, FontStyle.Regular, GraphicsUnit.Pixel);
 
             String date = publish_date.Month + "-" + publish_date.Day;
 
@@ -1802,11 +2023,11 @@ namespace XBSlink
             richTextBox_newsFeed.SelectionColor = Color.Black;
             richTextBox_newsFeed.AppendText(summary + Environment.NewLine);
 
-            if (link_uri != null && link_uri.Length>0)
+            if (link_uri != null && link_uri.Length > 0)
                 richTextBox_newsFeed.AppendText(link_uri + Environment.NewLine);
             richTextBox_newsFeed.AppendText(Environment.NewLine);
         }
-		
+
         private String feedXDocument(string feed_str)
         {
             XDocument document = XDocument.Parse(feed_str);
@@ -1840,12 +2061,14 @@ namespace XBSlink
         {
             if (checkBox_showNewsFeed.Checked)
             {
-                tabControl1.TabPages.Insert(0, tabPage_newsFeed);
-                loadNewsFeed( textBox_newsFeedUri.Text );
+                if (!tabControl1.TabPages.Contains(tabPage_newsFeed))
+                    tabControl1.TabPages.Insert(0, tabPage_newsFeed);
+                loadNewsFeed(textBox_newsFeedUri.Text);
             }
             else
             {
-                tabControl1.TabPages.Remove(tabPage_newsFeed);
+                if (tabControl1.TabPages.Contains(tabPage_newsFeed))
+                    tabControl1.TabPages.Remove(tabPage_newsFeed);
             }
         }
 
@@ -1892,6 +2115,21 @@ namespace XBSlink
                 }
             }
             treeView_nodeinfo.ExpandAll();
+        }
+
+        private void label21_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void textBox_stunserver_TextChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            ApplyLanguage(!isEnglish);
         }
     }
 }
