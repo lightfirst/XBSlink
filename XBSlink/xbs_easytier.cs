@@ -81,6 +81,8 @@ namespace XBSlink
         private static int _prefixLen = 16;
         private static string _instanceName = "xbslink";
 
+        public static string DevName = "ET-xbslink";
+
         public static bool IsLoaded { get { return _loaded; } }
         public static bool VipReady { get { return _vipReady; } }
         public static string Vip { get { return _vip; } }
@@ -411,32 +413,30 @@ namespace XBSlink
         }
 
         /// <summary>
-        /// 强制覆盖为 DHCP 模式，并设置 hostname：
-        ///  - 删除顶层 ipv4 行
-        ///  - 把 dhcp 强制设为 true（无此行则插入）
-        ///  - 把 hostname 强制设为 nickname（无此行则插入）
+        /// 强制覆盖 hostname，并根据 dhcp 状态清理冲突配置：
+        ///  - 如果 dhcp = true，则强制删除生效的 ipv4 行，避免冲突
+        ///  - 强制把 hostname 设为 nickname
         /// 只改内存中的 toml 文本，不改磁盘文件。
         /// </summary>
-        private static string ForceDhcpAndHostname(string toml, string nickname)
+        private static string ForceHostname(string toml, string nickname)
         {
             if (string.IsNullOrEmpty(toml)) return toml;
 
-            // 1) 删除顶层 ipv4 行（含被注释掉的也保留注释，只删生效的）
-            toml = Regex.Replace(toml,
-                @"(?im)^[ \t]*ipv4[ \t]*=[ \t]*[^\r\n]*\r?\n?",
-                "");
+            // 1. 检查并删除 ipv4 (如果 dhcp=true)
+            bool isDhcp = false;
+            if (Regex.IsMatch(toml, @"(?im)^[ \t]*dhcp[ \t]*=[ \t]*true[ \t]*(#.*)?$"))
+                isDhcp = true;
 
-            // 2) 强制 dhcp = true
-            var rxDhcp = new Regex(@"(?im)^[ \t]*dhcp[ \t]*=[ \t]*(true|false)[ \t]*(#.*)?$");
-            if (rxDhcp.IsMatch(toml))
-                toml = rxDhcp.Replace(toml, "dhcp = true", 1);
-            else
-                toml = "dhcp = true\n" + toml;
+            if (isDhcp)
+            {
+                toml = Regex.Replace(toml,
+                    @"(?im)^[ \t]*ipv4[ \t]*=[ \t]*[^\r\n]*\r?\n?",
+                    "");
+            }
 
-            // 3) 强制 hostname = nickname
+            // 2. 强制覆盖 hostname
             if (!string.IsNullOrEmpty(nickname))
             {
-                // 转义双引号和反斜杠
                 string escaped = nickname.Replace("\\", "\\\\").Replace("\"", "\\\"");
                 var rxHost = new Regex(@"(?im)^[ \t]*hostname[ \t]*=[ \t]*[^\r\n]*$");
                 if (rxHost.IsMatch(toml))
@@ -444,6 +444,33 @@ namespace XBSlink
                 else
                     toml = "hostname = \"" + escaped + "\"\n" + toml;
             }
+
+            // ★ 3. 强制覆盖 dev_name = "ET-xbslink"
+            var rxDev = new Regex(@"(?im)^[ \t]*dev_name[ \t]*=[ \t]*[^\r\n]*$");
+            if (rxDev.IsMatch(toml))
+                toml = rxDev.Replace(toml, "dev_name = \"ET-xbslink\"", 1);
+            else
+            {
+                // 如果没有 dev_name，尝试插在 [flags] 下面
+                var rxFlags = new Regex(@"(?im)^[ \t]*\[flags\][ \t]*\r?$");
+                var mFlags = rxFlags.Match(toml);
+                if (mFlags.Success)
+                {
+                    int insertAt = mFlags.Index + mFlags.Length;
+                    if (insertAt < toml.Length && toml[insertAt] == '\r') insertAt++;
+                    if (insertAt < toml.Length && toml[insertAt] == '\n') insertAt++;
+                    toml = toml.Insert(insertAt, "dev_name = \"ET-xbslink\"\n");
+                }
+                else
+                {
+                    // 连 [flags] 都没有，直接加在末尾
+                    if (!toml.EndsWith("\n")) toml += "\n";
+                    toml += "[flags]\ndev_name = \"ET-xbslink\"\n";
+                }
+            }
+
+            // 确保静态变量也更新
+            DevName = "ET-xbslink";
 
             return toml;
         }
@@ -483,11 +510,13 @@ namespace XBSlink
             //xbs_messages.addInfoMessage(" @ [ET] force no_tun = true (equivalent to --no-tun)",
             //    xbs_message_sender.GENERAL);
 
-            // ★ 强制 DHCP + hostname
-            toml = ForceDhcpAndHostname(toml, nickname);
+            // ★ 强制 DHCP + hostname + dev_name
+            toml = ForceHostname(toml, nickname);
             xbs_messages.addInfoMessage(" @ [ET] force dhcp = true, hostname = \"" + (nickname ?? "") + "\"",
                 xbs_message_sender.GENERAL);
-
+            var devNameMatch = Regex.Match(toml, @"(?im)^[ \t]*dev_name[ \t]*=[ \t]*""([^""]+)""");
+            if (devNameMatch.Success)
+                DevName = devNameMatch.Groups[1].Value;
             ProbeToml(toml, out string instanceName, out string ipv4, out int prefixLen,
                       out bool dhcp, out string networkName);
 
@@ -548,7 +577,7 @@ namespace XBSlink
             }
 
             // 3) TUN 模式：等 virtual_ipv4 出现
-            int rc = WaitInstanceReady(60000);
+            int rc = WaitInstanceReady(90000);
             if (rc != kOk)
             {
                 if (!string.IsNullOrEmpty(ipv4))

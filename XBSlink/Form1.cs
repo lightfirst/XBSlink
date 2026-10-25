@@ -105,6 +105,9 @@ namespace XBSlink
 
         private bool captureDeviceRestoredFromSettings = false;
 
+        private System.Windows.Forms.Timer timer_easytier_dhcp = null;
+        private string last_easytier_vip = null;
+
         public FormMain()
         {
 #if DEBUG
@@ -184,6 +187,7 @@ namespace XBSlink
             { "groupBox_newsFeed",         new[] { "公告", "News feed" } },
             { "groupBox1",                 new[] { "抓包", "Packet sniffer" } },
             { "groupBox_portoptions",      new[] { "网络连接", "Internet connection" } },
+            { "button_flash_IP",      new[] { "刷新IP", "Refresh IP" } },
             { "groupBox_packetfilter",     new[] { "包过滤", "Packet filter" } },
             { "groupBox_MAClist",          new[] { "“始终转发” MAC 列表", "\"Always forward\" MAC list" } },
             { "groupBox3",                 new[] { "NAT 设置", "NAT settings" } },
@@ -331,7 +335,8 @@ namespace XBSlink
 
                             // ★ EasyTier 网络就绪后，再加载新闻和云端列表
                             LoadNetworkDependentData();
-                            //loadNewsFeed(textBox_newsFeedUri.Text);
+
+                            InitializeDhcpMonitor();
                         }
                         else
                         {
@@ -422,7 +427,77 @@ namespace XBSlink
 
             button_language.Enabled = true;
 
-            //LoadNetworkDependentData();
+        }
+
+        private void InitializeDhcpMonitor()
+        {
+            timer_easytier_dhcp = new System.Windows.Forms.Timer();
+            timer_easytier_dhcp.Interval = 5000; // 每 5 秒检查一次
+            timer_easytier_dhcp.Tick += new EventHandler(timer_easytier_dhcp_Tick);
+            timer_easytier_dhcp.Start();
+        }
+
+        private void timer_easytier_dhcp_Tick(object sender, EventArgs e)
+        {
+            // 如果 EasyTier 没加载，或者没启用，就不处理
+            if (!xbs_easytier.IsLoaded) return;
+
+            // 从系统网卡里直接读取 EasyTier 当前的 IP
+            string live_vip = null;
+            NetworkInterface[] nics = NetworkInterface.GetAllNetworkInterfaces();
+
+            foreach (NetworkInterface ni in nics)
+            {
+                // 通过名字匹配 EasyTier 的网卡（忽略大小写）
+                if (ni.Name.Equals(xbs_easytier.DevName, StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.IndexOf(xbs_easytier.DevName, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    if (ni.OperationalStatus != OperationalStatus.Up) continue;
+
+                    foreach (UnicastIPAddressInformation ip in ni.GetIPProperties().UnicastAddresses)
+                    {
+                        if (ip.Address.AddressFamily == AddressFamily.InterNetwork)
+                        {
+                            live_vip = ip.Address.ToString();
+                            break;
+                        }
+                    }
+                    if (live_vip != null) break;
+                }
+            }
+
+            if (string.IsNullOrEmpty(live_vip)) return;
+
+            // 记录是否发生变化
+            if (last_easytier_vip != live_vip)
+            {
+                bool is_first_time = (last_easytier_vip == null);
+                last_easytier_vip = live_vip;
+
+                // 如果 IP 变了，且和下拉框里当前选中的不一样
+                if (comboBox_localIP.SelectedItem == null || comboBox_localIP.SelectedItem.ToString() != live_vip)
+                {
+                    // 刷新 IP 列表
+                    button_flash_IP_Click(null, null);
+
+                    // 选中 EasyTier 的新 IP
+                    int idx = comboBox_localIP.Items.IndexOf(live_vip);
+                    if (idx >= 0)
+                    {
+                        comboBox_localIP.SelectedIndex = idx;
+                        internal_ip = IPAddress.Parse(live_vip);
+                    }
+
+                    if (!is_first_time)
+                    {
+                        string msgLog = isEnglish
+                            ? " @ [ET] DHCP IP changed to " + live_vip + " (auto-selected)"
+                            : " @ [ET] DHCP IP 已更新为 " + live_vip + " (已自动选中)";
+
+                        xbs_messages.addInfoMessage(msgLog, xbs_message_sender.GENERAL);
+                    }
+                }
+            }
         }
 
         private void UpdateStartEngineButtonText()
@@ -2234,9 +2309,111 @@ namespace XBSlink
 
         }
 
-        private void button1_Click(object sender, EventArgs e)
+        private void button_language_Click(object sender, EventArgs e)
         {
             ApplyLanguage(!isEnglish);
+        }
+
+        private void button_flash_IP_Click(object sender, EventArgs e)
+        {
+            // 记录当前选中的 IP（如果存在的话），以便刷新后恢复选中
+            string previous_ip = "";
+            if (comboBox_localIP.SelectedItem != null)
+            {
+                previous_ip = comboBox_localIP.SelectedItem.ToString();
+            }
+            else if (comboBox_localIP.Text.Length > 0)
+            {
+                previous_ip = comboBox_localIP.Text;
+            }
+
+            // 清空现有列表和网关缓存字典
+            comboBox_localIP.Items.Clear();
+            network_device_gateways.Clear();
+
+            NetworkInterface[] network_interfaces = NetworkInterface.GetAllNetworkInterfaces();
+            int local_ip_count = 0;
+            int preferred_local_ip = -1;
+            int target_index = -1;
+
+            // 遍历所有网卡，提取 IPv4 地址
+            foreach (NetworkInterface ni in network_interfaces)
+            {
+                IPInterfaceProperties ip_properties = ni.GetIPProperties();
+                foreach (UnicastIPAddressInformation uniCast in ip_properties.UnicastAddresses)
+                {
+                    // 跳过回环地址和 IPv6
+                    if (!IPAddress.IsLoopback(uniCast.Address) && uniCast.Address.AddressFamily != AddressFamily.InterNetworkV6)
+                    {
+                        // 跳过 169.254.x.x 自动分配的无效应 IP
+                        if (uniCast.Address.ToString().Split('.')[0] != "169")
+                        {
+                            local_ip_count++;
+                            string ip_str = uniCast.Address.ToString();
+                            comboBox_localIP.Items.Add(ip_str);
+
+                            // 同步更新网关字典，避免 resume_start_engine 崩溃
+                            network_device_gateways[uniCast.Address] = ip_properties.GatewayAddresses;
+
+                            // 记录之前选中的 IP 现在的位置
+                            if (ip_str == previous_ip)
+                            {
+                                target_index = local_ip_count - 1;
+                            }
+
+                            // 自动寻找一个具有默认网关且处于启用状态的网卡作为首选（备胎）
+                            if (ni.OperationalStatus == OperationalStatus.Up && (ip_properties.GatewayAddresses.Count > 0))
+                            {
+                                if (!ip_properties.GatewayAddresses[0].Address.Equals(new IPAddress(0)))
+                                {
+                                    preferred_local_ip = local_ip_count;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 恢复选中状态
+            if (comboBox_localIP.Items.Count > 0)
+            {
+                if (target_index >= 0)
+                {
+                    // 如果之前的 IP 还在，恢复它
+                    comboBox_localIP.SelectedIndex = target_index;
+                }
+                else
+                {
+                    // 如果之前的 IP 不在了（比如 EasyTier 关了），或者本来就没选中
+                    comboBox_localIP.SelectedIndex = (preferred_local_ip == -1) ? 0 : preferred_local_ip - 1;
+                }
+            }
+
+            // 如果是通过 EasyTier 获取的 IP，确保网关字典里有它（传 null 给 xbs_sniffer 是安全的）
+            if (xbs_easytier.VipReady)
+            {
+                string vip = xbs_easytier.Vip;
+                int idx = comboBox_localIP.Items.IndexOf(vip);
+                if (idx < 0)
+                {
+                    comboBox_localIP.Items.Add(vip);
+                    idx = comboBox_localIP.Items.Count - 1;
+                    IPAddress vip_addr = IPAddress.Parse(vip);
+                    if (!network_device_gateways.ContainsKey(vip_addr))
+                        network_device_gateways[vip_addr] = null;
+
+                    // 如果之前没有选中任何东西，可以默认选中 EasyTier IP
+                    if (string.IsNullOrEmpty(previous_ip))
+                        comboBox_localIP.SelectedIndex = idx;
+                }
+            }
+
+            // 提示用户刷新成功
+            string msgTip = isEnglish ? "IP list refreshed" : "IP 列表已刷新";
+            string msgLog = isEnglish ? " @ Refreshed bind IP list" : " @ 已刷新绑定 IP 列表";
+
+            toolTip1.Show(msgTip, button_flash_IP, 0, -20, 2000);
+            xbs_messages.addInfoMessage(msgLog, xbs_message_sender.GENERAL);
         }
     }
 }

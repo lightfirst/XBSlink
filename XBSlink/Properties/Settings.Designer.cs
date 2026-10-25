@@ -193,7 +193,7 @@ namespace XBSlink.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("http://10.165.0.105/cloudlist.php")]
+        [global::System.Configuration.DefaultSettingValueAttribute("http://10.165.0.1/cloudlist.php")]
         public string REG_CLOUDLIST_SERVER {
             get {
                 return ((string)(this["REG_CLOUDLIST_SERVER"]));
@@ -361,7 +361,7 @@ namespace XBSlink.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("http://10.165.0.105/feed.xml")]
+        [global::System.Configuration.DefaultSettingValueAttribute("http://10.165.0.1/feed.xml")]
         public string REG_NEWS_FEED_URI {
             get {
                 return ((string)(this["REG_NEWS_FEED_URI"]));

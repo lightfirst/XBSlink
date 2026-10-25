@@ -143,6 +143,7 @@ namespace XBSlink
             this.tabPageSettings_network = new System.Windows.Forms.TabPage();
             this.groupBox1 = new System.Windows.Forms.GroupBox();
             this.groupBox_portoptions = new System.Windows.Forms.GroupBox();
+            this.button_flash_IP = new System.Windows.Forms.Button();
             this.checkBox_useCloudServerForPortCheck = new System.Windows.Forms.CheckBox();
             this.label6 = new System.Windows.Forms.Label();
             this.groupBox_packetfilter = new System.Windows.Forms.GroupBox();
@@ -187,7 +188,6 @@ namespace XBSlink
             this.contextMenuStrip_systray = new System.Windows.Forms.ContextMenuStrip(this.components);
             this.toolStripMenuItem_exit = new System.Windows.Forms.ToolStripMenuItem();
             this.button_language = new System.Windows.Forms.Button();
-            this.button1 = new System.Windows.Forms.Button();
             this.statusStrip.SuspendLayout();
             this.tabControl1.SuspendLayout();
             this.tabPage_newsFeed.SuspendLayout();
@@ -761,7 +761,7 @@ namespace XBSlink
             this.textBox_cloudlist.Name = "textBox_cloudlist";
             this.textBox_cloudlist.Size = new System.Drawing.Size(203, 21);
             this.textBox_cloudlist.TabIndex = 2;
-            this.textBox_cloudlist.Text = "http://10.165.0.105/cloudlist.php";
+            this.textBox_cloudlist.Text = "http://10.165.0.1/cloudlist.php";
             this.textBox_cloudlist.Leave += new System.EventHandler(this.textBox_cloudlist_Leave);
             // 
             // label11
@@ -1060,7 +1060,7 @@ namespace XBSlink
             this.textBox_newsFeedUri.Name = "textBox_newsFeedUri";
             this.textBox_newsFeedUri.Size = new System.Drawing.Size(314, 21);
             this.textBox_newsFeedUri.TabIndex = 0;
-            this.textBox_newsFeedUri.Text = "http://10.165.0.105/feed.xml";
+            this.textBox_newsFeedUri.Text = "http://10.165.0.1/feed.xml";
             this.textBox_newsFeedUri.TextChanged += new System.EventHandler(this.textBox_newsFeedUri_TextChanged);
             this.textBox_newsFeedUri.Leave += new System.EventHandler(this.textBox_newsFeedUri_Leave);
             // 
@@ -1254,7 +1254,7 @@ namespace XBSlink
             // 
             this.groupBox_portoptions.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
-            this.groupBox_portoptions.Controls.Add(this.button1);
+            this.groupBox_portoptions.Controls.Add(this.button_flash_IP);
             this.groupBox_portoptions.Controls.Add(this.checkbox_UPnP);
             this.groupBox_portoptions.Controls.Add(this.checkBox_useCloudServerForPortCheck);
             this.groupBox_portoptions.Controls.Add(this.label3);
@@ -1268,6 +1268,16 @@ namespace XBSlink
             this.groupBox_portoptions.TabIndex = 39;
             this.groupBox_portoptions.TabStop = false;
             this.groupBox_portoptions.Text = "internet connection";
+            // 
+            // button_flash_IP
+            // 
+            this.button_flash_IP.Location = new System.Drawing.Point(253, 32);
+            this.button_flash_IP.Name = "button_flash_IP";
+            this.button_flash_IP.Size = new System.Drawing.Size(79, 19);
+            this.button_flash_IP.TabIndex = 38;
+            this.button_flash_IP.Text = "Reflash IP";
+            this.button_flash_IP.UseVisualStyleBackColor = true;
+            this.button_flash_IP.Click += new System.EventHandler(this.button_flash_IP_Click);
             // 
             // checkBox_useCloudServerForPortCheck
             // 
@@ -1730,17 +1740,7 @@ namespace XBSlink
             this.button_language.TabIndex = 5;
             this.button_language.Text = "中文";
             this.button_language.UseVisualStyleBackColor = true;
-            this.button_language.Click += new System.EventHandler(this.button1_Click);
-            // 
-            // button1
-            // 
-            this.button1.Enabled = false;
-            this.button1.Location = new System.Drawing.Point(267, 32);
-            this.button1.Name = "button1";
-            this.button1.Size = new System.Drawing.Size(39, 19);
-            this.button1.TabIndex = 38;
-            this.button1.Text = "Add";
-            this.button1.UseVisualStyleBackColor = true;
+            this.button_language.Click += new System.EventHandler(this.button_language_Click);
             // 
             // FormMain
             // 
@@ -1955,7 +1955,7 @@ namespace XBSlink
         private System.Windows.Forms.TextBox textBox_public_port;
         private System.Windows.Forms.Label label21;
         private System.Windows.Forms.Button button_language;
-        private System.Windows.Forms.Button button1;
+        private System.Windows.Forms.Button button_flash_IP;
     }
 }
 
