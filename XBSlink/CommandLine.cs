@@ -240,8 +240,12 @@ namespace XBSlink
             if (!File.Exists(ini))
                 return;
 
+            // ★ 在这里获取 cloudserver，并传给 StartupFromIni
+            string cloudserver = option_cloudserver ?? xbs_cloudlist.DEFAULT_CLOUDLIST_SERVER;
+
             string err;
-            if (xbs_easytier.StartupFromIni(ini, option_nickname, out err))
+            // ★ 传入 option_nickname 和 cloudserver
+            if (xbs_easytier.StartupFromIni(ini, option_nickname, cloudserver, out err))
             {
                 xbs_messages.addInfoMessage(
                     " @ [ET] virtual network up, VIP = " + xbs_easytier.Vip
@@ -600,7 +604,7 @@ namespace XBSlink
                 if (new_version_found > 0)
                     xbs_messages.addInfoMessage("A new version of XBSlink is available! (v" + result + ")", xbs_message_sender.GENERAL);
                 else if (new_version_found < 0)
-                    xbs_messages.addInfoMessage("Latest XBSlink version found: v" + result, xbs_message_sender.GENERAL);
+                    xbs_messages.addInfoMessage("Latest XBSlink version found: v" + result + "", xbs_message_sender.GENERAL);
                 else
                     xbs_messages.addInfoMessage("You are using the latest XBSlink version.", xbs_message_sender.GENERAL);
             }

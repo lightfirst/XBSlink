@@ -323,6 +323,7 @@ namespace XBSlink
             // 
             // textBox_local_Port
             // 
+            this.textBox_local_Port.Enabled = false;
             this.textBox_local_Port.Location = new System.Drawing.Point(206, 30);
             this.textBox_local_Port.MaxLength = 5;
             this.textBox_local_Port.Name = "textBox_local_Port";
@@ -761,7 +762,7 @@ namespace XBSlink
             this.textBox_cloudlist.Name = "textBox_cloudlist";
             this.textBox_cloudlist.Size = new System.Drawing.Size(203, 21);
             this.textBox_cloudlist.TabIndex = 2;
-            this.textBox_cloudlist.Text = "http://10.165.0.1/cloudlist.php";
+            this.textBox_cloudlist.Text = "http://10.126.0.1/cloudlist.php";
             this.textBox_cloudlist.Leave += new System.EventHandler(this.textBox_cloudlist_Leave);
             // 
             // label11
@@ -1060,7 +1061,7 @@ namespace XBSlink
             this.textBox_newsFeedUri.Name = "textBox_newsFeedUri";
             this.textBox_newsFeedUri.Size = new System.Drawing.Size(314, 21);
             this.textBox_newsFeedUri.TabIndex = 0;
-            this.textBox_newsFeedUri.Text = "http://10.165.0.1/feed.xml";
+            this.textBox_newsFeedUri.Text = "http://10.126.0.1/feed.xml";
             this.textBox_newsFeedUri.TextChanged += new System.EventHandler(this.textBox_newsFeedUri_TextChanged);
             this.textBox_newsFeedUri.Leave += new System.EventHandler(this.textBox_newsFeedUri_Leave);
             // 

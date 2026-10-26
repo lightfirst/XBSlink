@@ -16,6 +16,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -413,28 +415,78 @@ namespace XBSlink
         }
 
         /// <summary>
-        /// 强制覆盖 hostname，并根据 dhcp 状态清理冲突配置：
-        ///  - 如果 dhcp = true，则强制删除生效的 ipv4 行，避免冲突
-        ///  - 强制把 hostname 设为 nickname
-        /// 只改内存中的 toml 文本，不改磁盘文件。
+        /// 强制覆盖配置：
+        ///  - 删除原 ipv4 和 dhcp 配置，强制使用静态随机 IP
+        ///  - 强制 hostname 为玩家昵称
+        ///  - 强制 dev_name = "ET-xbslink"
         /// </summary>
-        private static string ForceHostname(string toml, string nickname)
+        private static string OverrideTomlSettings(string toml, string nickname, string cloudlist_server)
         {
             if (string.IsNullOrEmpty(toml)) return toml;
 
-            // 1. 检查并删除 ipv4 (如果 dhcp=true)
-            bool isDhcp = false;
-            if (Regex.IsMatch(toml, @"(?im)^[ \t]*dhcp[ \t]*=[ \t]*true[ \t]*(#.*)?$"))
-                isDhcp = true;
+            // 1. 强制删除 ipv4 和 dhcp 配置（让 Easytier 完全使用我们注入的静态 IP）
+            toml = Regex.Replace(toml, @"(?im)^[ \t]*ipv4[ \t]*=[ \t]*[^\r\n]*\r?\n?", "");
+            toml = Regex.Replace(toml, @"(?im)^[ \t]*dhcp[ \t]*=[ \t]*[^\r\n]*\r?\n?", "");
 
-            if (isDhcp)
+            // 2. 根据 cloudlist_server 决定生成哪个网段的 IP
+            bool isPrivate10Net = false;
+            int net_second_octet = 0;
+            int net_third_octet = 0;
+            int net_fourth_octet = 0;
+
+            try
             {
-                toml = Regex.Replace(toml,
-                    @"(?im)^[ \t]*ipv4[ \t]*=[ \t]*[^\r\n]*\r?\n?",
-                    "");
+                if (!string.IsNullOrEmpty(cloudlist_server))
+                {
+                    Uri uri = new Uri(cloudlist_server);
+                    IPAddress[] ips = Dns.GetHostAddresses(uri.Host);
+                    foreach (IPAddress ip in ips)
+                    {
+                        if (ip.AddressFamily == AddressFamily.InterNetwork)
+                        {
+                            byte[] bytes = ip.GetAddressBytes();
+                            if (bytes[0] == 10) // 10.x.x.x 网段
+                            {
+                                isPrivate10Net = true;
+                                net_second_octet = bytes[1];
+                                net_third_octet = bytes[2];
+                                net_fourth_octet = bytes[3];
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            catch { /* 解析失败视作公网 */ }
+
+            // 3. 生成随机静态 IP 并注入到配置头部
+            Random rnd = new Random();
+            string random_ipv4;
+
+            if (isPrivate10Net)
+            {
+                // 如果 cloudlist_server 是 10.x.y.y
+                // 第二段 x 保持相同，第三/四段 y.y 随机，且不能与 cloudlist_server 的完全相同
+                int y3, y4;
+                do
+                {
+                    y3 = rnd.Next(1, 255);
+                    y4 = rnd.Next(1, 255);
+                } while (y3 == net_third_octet && y4 == net_fourth_octet);
+
+                random_ipv4 = $"10.{net_second_octet}.{y3}.{y4}/16";
+            }
+            else
+            {
+                // 如果不是 10.x.x.x，使用默认的 10.126.y.y
+                random_ipv4 = $"10.126.{rnd.Next(1, 255)}.{rnd.Next(1, 255)}/16";
             }
 
-            // 2. 强制覆盖 hostname
+            toml = $"ipv4 = \"{random_ipv4}\"\n" + toml;
+            // 强制关闭 DHCP
+            toml = "dhcp = false\n" + toml;
+
+            // 4. 强制覆盖 hostname
             if (!string.IsNullOrEmpty(nickname))
             {
                 string escaped = nickname.Replace("\\", "\\\\").Replace("\"", "\\\"");
@@ -445,10 +497,12 @@ namespace XBSlink
                     toml = "hostname = \"" + escaped + "\"\n" + toml;
             }
 
-            // ★ 3. 强制覆盖 dev_name = "ET-xbslink"
+            // 5. 强制覆盖 dev_name
             var rxDev = new Regex(@"(?im)^[ \t]*dev_name[ \t]*=[ \t]*[^\r\n]*$");
             if (rxDev.IsMatch(toml))
+            {
                 toml = rxDev.Replace(toml, "dev_name = \"ET-xbslink\"", 1);
+            }
             else
             {
                 // 如果没有 dev_name，尝试插在 [flags] 下面
@@ -472,6 +526,10 @@ namespace XBSlink
             // 确保静态变量也更新
             DevName = "ET-xbslink";
 
+            xbs_messages.addInfoMessage(
+                $" @ [ET] Override config: forced dhcp=false, ipv4={random_ipv4}, dev_name=ET-xbslink",
+                xbs_message_sender.GENERAL);
+
             return toml;
         }
 
@@ -484,10 +542,10 @@ namespace XBSlink
         ///   1. parse_config(toml)
         ///   2. run_network_instance(toml)
         ///   3. 诊断：GetInstanceInfo(instanceName) 打印实例名匹配情况
-        ///   4. no-tun 模式：不创建 TUN，不会有 virtual_ipv4，直接 OpenSession
+        ///   4. no-tun 模式：不创建 TUN，不会有 virtual_ipv4，直接 OpenSession（暂时放弃no-tun模式）
         ///   5. TUN 模式：WaitInstanceReady 等 virtual_ipv4，再 OpenSession（如有必要）
         /// </summary>
-        public static bool StartupFromIni(string iniPath, string nickname, out string error)
+        public static bool StartupFromIni(string iniPath, string nickname, string cloudlist_server, out string error)
         {
             error = null;
 
@@ -505,18 +563,19 @@ namespace XBSlink
 
             string toml = File.ReadAllText(iniPath);
 
-            // 等价 CLI --no-tun：在 parse_config 前把 no_tun 强制改为 true
+            // 等价 CLI --no-tun：在 parse_config 前把 no_tun 强制改为 true （暂时放弃no-tun模式）
             //toml = ForceNoTun(toml);
             //xbs_messages.addInfoMessage(" @ [ET] force no_tun = true (equivalent to --no-tun)",
             //    xbs_message_sender.GENERAL);
 
-            // ★ 强制 DHCP + hostname + dev_name
-            toml = ForceHostname(toml, nickname);
-            xbs_messages.addInfoMessage(" @ [ET] force dhcp = true, hostname = \"" + (nickname ?? "") + "\"",
-                xbs_message_sender.GENERAL);
-            var devNameMatch = Regex.Match(toml, @"(?im)^[ \t]*dev_name[ \t]*=[ \t]*""([^""]+)""");
-            if (devNameMatch.Success)
-                DevName = devNameMatch.Groups[1].Value;
+            // 强制覆盖配置（包含静态 IP 生成逻辑）
+            toml = OverrideTomlSettings(toml, nickname, cloudlist_server);
+
+            if (!toml.Contains("instance_name"))
+            {
+                toml = "instance_name = \"xbslink\"\n" + toml;
+            }
+
             ProbeToml(toml, out string instanceName, out string ipv4, out int prefixLen,
                       out bool dhcp, out string networkName);
 
@@ -528,12 +587,6 @@ namespace XBSlink
             {
                 xbs_messages.addInfoMessage("!! [ET] easytier.ini 既没有静态 ipv4 也没开 dhcp=true，EasyTier 将无法分配虚拟 IP",
                     xbs_message_sender.GENERAL, xbs_message_type.WARNING);
-            }
-            if (string.IsNullOrEmpty(instanceName))
-            {
-                instanceName = "xbslink";
-                // 在 toml 开头插入 instance_name，确保 EasyTier 用这个名字
-                toml = "instance_name = \"" + instanceName + "\"\n" + toml;
             }
 
             // 1) 交给 EasyTier 官方 FFI

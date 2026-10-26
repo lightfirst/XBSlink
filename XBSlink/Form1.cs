@@ -302,14 +302,19 @@ namespace XBSlink
             string etIni = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "easytier.ini");
             if (File.Exists(etIni))
             {
-                string nickname = textBox_chatNickname.Text;
-                if (string.IsNullOrEmpty(nickname))
-                    nickname = xbs_chat.STANDARD_NICKNAME;
-
                 System.Threading.ThreadPool.QueueUserWorkItem(_ =>
                 {
+                    string nickname = textBox_chatNickname.Text;
+                    if (string.IsNullOrEmpty(nickname))
+                        nickname = xbs_chat.STANDARD_NICKNAME;
+
+                    string cloudserver = textBox_cloudlist.Text;
+                    if (string.IsNullOrEmpty(cloudserver))
+                        cloudserver = xbs_cloudlist.DEFAULT_CLOUDLIST_SERVER;
+
                     string etErr;
-                    bool ok = xbs_easytier.StartupFromIni(etIni, nickname, out etErr);
+                    // 传入 nickname 和 cloudserver
+                    bool ok = xbs_easytier.StartupFromIni(etIni, nickname, cloudserver, out etErr);
 
                     this.BeginInvoke(new Action(() =>
                     {
@@ -336,15 +341,13 @@ namespace XBSlink
                             // ★ EasyTier 网络就绪后，再加载新闻和云端列表
                             LoadNetworkDependentData();
 
-                            InitializeDhcpMonitor();
+                            // ★ 如果你还需要监控 IP 变化（比如 DHCP），可以取消注释
+                            // InitializeDhcpMonitor();
                         }
                         else
                         {
                             xbs_messages.addInfoMessage("!! [ET] startup failed: " + etErr,
                                 xbs_message_sender.GENERAL, xbs_message_type.ERROR);
-
-                            // EasyTier 失败也允许用户继续用物理网卡，仍然加载新闻/云端列表
-                            //LoadNetworkDependentData();
                         }
                     }));
                 });
@@ -704,6 +707,7 @@ namespace XBSlink
             s.REG_SHOW_NEWS_FEED = checkBox_showNewsFeed.Checked;
             s.REG_NEWS_FEED_URI = textBox_newsFeedUri.Text;
             s.REG_NEWS_FEED_SWITCH_TO_TAB = checkBox_switchToNewsTab.Checked;
+            s.REG_CLOUDLIST_SERVER = textBox_cloudlist.Text;
             s.Save();
         }
 
@@ -1639,6 +1643,7 @@ namespace XBSlink
                     toolTip2.Show("no clouds available on server.", buttonLoadCloudlist, 0, -20, 2000);
 
                 xbs_settings.settings.REG_CLOUDLIST_SERVER = textBox_cloudlist.Text;
+                saveRegistryValues();
             }
         }
 
