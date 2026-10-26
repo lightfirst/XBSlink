@@ -630,7 +630,7 @@ namespace XBSlink
             }
 
             // 3) TUN 模式：等 virtual_ipv4 出现
-            int rc = WaitInstanceReady(90000);
+            int rc = WaitInstanceReady(3000);
             if (rc != kOk)
             {
                 if (!string.IsNullOrEmpty(ipv4))

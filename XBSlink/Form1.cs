@@ -801,20 +801,50 @@ namespace XBSlink
                 return;
             }
 
-            try
+            // ★ 判定：如果当前绑定的 IP 是 EasyTier 的虚拟 IP
+            bool is_binding_easytier = xbs_easytier.VipReady &&
+                                       xbs_easytier.Vip != null &&
+                                       internal_ip.ToString() == xbs_easytier.Vip;
+
+            if (is_binding_easytier)
             {
-                if (use_UPnP && upnp.isUPnPavailable())
+                // 使用 EasyTier 时，外部 IP 就是虚拟 IP，跳过所有公网探测
+                external_ip = internal_ip;
+                string msgLog = isEnglish
+                    ? " @ [ET] Bound to EasyTier virtual IP, forcing external IP to " + external_ip
+                    : " @ [ET] 绑定的是 EasyTier 虚拟 IP，外部 IP 强制设为 " + external_ip;
+
+                xbs_messages.addInfoMessage(msgLog, xbs_message_sender.GENERAL);
+
+                // 如果你在 EasyTier 下仍需要使用 UPnP，可以保留下面这段映射（通常不需要）
+                try
                 {
-                    external_ip = upnp.upnp_getPublicIP();
-                    upnp.upnp_create_mapping(Mono.Nat.Protocol.Udp, udp_listener.udp_socket_port, udp_listener.udp_socket_port);
+                    if (use_UPnP && upnp.isUPnPavailable())
+                    {
+                        upnp.upnp_create_mapping(Mono.Nat.Protocol.Udp, udp_listener.udp_socket_port, udp_listener.udp_socket_port);
+                    }
                 }
+                catch (Exception) { }
             }
-            catch (Exception)
+            else
             {
-                xbs_messages.addInfoMessage("!! UPnP port mapping failed", xbs_message_sender.GENERAL, xbs_message_type.ERROR);
+                // 如果不是 EasyTier 的 IP，按原来的方式处理
+                try
+                {
+                    if (use_UPnP && upnp.isUPnPavailable())
+                    {
+                        external_ip = upnp.upnp_getPublicIP();
+                        upnp.upnp_create_mapping(Mono.Nat.Protocol.Udp, udp_listener.udp_socket_port, udp_listener.udp_socket_port);
+                    }
+                }
+                catch (Exception)
+                {
+                    xbs_messages.addInfoMessage("!! UPnP port mapping failed", xbs_message_sender.GENERAL, xbs_message_type.ERROR);
+                }
+
+                if (external_ip == null)
+                    external_ip = xbs_upnp.getExternalIPAddressFromWebsite();
             }
-            if (external_ip==null)
-                external_ip = xbs_upnp.getExternalIPAddressFromWebsite();
 
             IPAddress local_node_ip = (external_ip == null) ? internal_ip : external_ip;
             node_list.local_node = new xbs_node(local_node_ip, udp_listener.udp_socket_port);
